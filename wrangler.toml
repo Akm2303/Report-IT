@@ -1,0 +1,28 @@
+name = "it-report-d1-system"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Deploy to workers.dev (gratis)
+workers_dev = true
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "it-reports-db"
+database_id = "YOUR_D1_DATABASE_ID"  # Ganti dengan ID database Anda
+
+# Environment variables (opsional)
+[vars]
+ENVIRONMENT = "production"
+MAX_IMAGE_SIZE = "1048576"  # 1MB in bytes
+
+# Untuk development
+[env.development]
+ENVIRONMENT = "development"
+
+# Untuk production (jika pakai custom domain)
+[env.production]
+workers_dev = false
+route = "your-domain.com/*"
+zone_id = "your-zone-id"
