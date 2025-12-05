@@ -10,7 +10,7 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "it-reports-db"
-database_id = "YOUR_D1_DATABASE_ID"  # Ganti dengan ID database Anda
+database_id = "5e39b262-c24c-40b5-bed2-f1a4597bd4ef"  # Ganti dengan ID database Anda
 
 # Environment variables (opsional)
 [vars]
