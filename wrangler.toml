@@ -1,28 +1,25 @@
-name = "it-report-d1-system"
+# wrangler.toml
+name = "it-report-d1"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Deploy to workers.dev (gratis)
+# Deploy to workers.dev (free tier)
 workers_dev = true
 
-# D1 Database binding
+# D1 Database configuration
 [[d1_databases]]
 binding = "DB"
 database_name = "it-reports-db"
 database_id = "5e39b262-c24c-40b5-bed2-f1a4597bd4ef"  # Ganti dengan ID database Anda
 
-# Environment variables (opsional)
+# Environment variables
 [vars]
 ENVIRONMENT = "production"
-MAX_IMAGE_SIZE = "1048576"  # 1MB in bytes
+APP_NAME = "IT Report System"
+MAX_IMAGE_SIZE = "1048576"  # 1MB
 
-# Untuk development
-[env.development]
-ENVIRONMENT = "development"
-
-# Untuk production (jika pakai custom domain)
-[env.production]
-workers_dev = false
-route = "your-domain.com/*"
-zone_id = "your-zone-id"
+# Uncomment untuk production dengan custom domain
+# [env.production]
+# route = "it-reports.your-domain.com/*"
+# zone_id = "your-zone-id"

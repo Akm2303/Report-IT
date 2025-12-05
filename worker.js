@@ -1,7 +1,7 @@
-// worker.js - Cloudflare Worker dengan D1 Database
+// worker.js - Cloudflare Worker dengan D1 Database - FIXED
 export default {
   async fetch(request, env) {
-    // CORS headers untuk development
+    // CORS headers untuk semua response
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -19,35 +19,39 @@ export default {
     try {
       // Routing
       if (path === '/api/reports' && request.method === 'GET') {
-        return await getReports(env.DB);
+        return await handleGetReports(env.DB);
       } else if (path === '/api/reports' && request.method === 'POST') {
-        return await createReport(request, env.DB);
-      } else if (path.match(/^\/api\/reports\/[^\/]+$/) && request.method === 'GET') {
+        return await handleCreateReport(request, env.DB);
+      } else if (path.startsWith('/api/reports/') && request.method === 'GET') {
         const id = path.split('/').pop();
-        return await getReport(id, env.DB);
-      } else if (path.match(/^\/api\/reports\/[^\/]+$/) && request.method === 'DELETE') {
+        return await handleGetReport(id, env.DB);
+      } else if (path.startsWith('/api/reports/') && request.method === 'DELETE') {
         const id = path.split('/').pop();
-        return await deleteReport(id, env.DB);
+        return await handleDeleteReport(id, env.DB);
       } else if (path === '/api/images' && request.method === 'POST') {
-        return await uploadImage(request, env.DB);
-      } else if (path.match(/^\/api\/images\/[^\/]+$/)) {
+        return await handleUploadImage(request, env.DB);
+      } else if (path.startsWith('/api/images/')) {
         const id = path.split('/').pop();
-        return await getImage(id, env.DB);
+        return await handleGetImage(id, env.DB);
       } else if (path === '/api/stats') {
-        return await getStats(env.DB);
+        return await handleGetStats(env.DB);
       } else if (path === '/api/health') {
-        return new Response(JSON.stringify({ status: 'ok' }), {
+        return new Response(JSON.stringify({ 
+          status: 'ok',
+          database: env.DB ? 'connected' : 'not connected'
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       } else {
         // Serve frontend HTML
-        return serveFrontend();
+        return await serveFrontend();
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error in worker:', error);
       return new Response(JSON.stringify({ 
         error: error.message,
-        success: false 
+        success: false,
+        timestamp: new Date().toISOString()
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -56,310 +60,334 @@ export default {
   },
 };
 
-// 1. GET all reports (with pagination)
-async function getReports(db) {
-  const { results } = await db.prepare(`
-    SELECT 
-      r.*,
-      COUNT(i.id) as image_count,
-      GROUP_CONCAT(i.filename) as image_filenames
-    FROM reports r
-    LEFT JOIN images i ON r.id = i.report_id
-    GROUP BY r.id
-    ORDER BY r.created_at DESC
-    LIMIT 100
-  `).all();
+// 1. GET all reports
+async function handleGetReports(db) {
+  try {
+    const { results } = await db.prepare(`
+      SELECT 
+        r.*,
+        (SELECT COUNT(*) FROM images WHERE report_id = r.id) as image_count
+      FROM reports r
+      ORDER BY r.created_at DESC
+      LIMIT 100
+    `).all();
 
-  return new Response(JSON.stringify({
-    success: true,
-    data: results,
-    total: results.length
-  }), {
-    headers: { 
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
+    return new Response(JSON.stringify({
+      success: true,
+      data: results,
+      total: results.length,
+      timestamp: new Date().toISOString()
+    }), {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  } catch (error) {
+    throw new Error(`Failed to get reports: ${error.message}`);
+  }
 }
 
-// 2. GET single report dengan images
-async function getReport(id, db) {
-  // Get report details
-  const report = await db.prepare(`
-    SELECT * FROM reports WHERE id = ?
-  `).bind(id).first();
+// 2. GET single report
+async function handleGetReport(id, db) {
+  try {
+    // Get report details
+    const report = await db.prepare(`
+      SELECT * FROM reports WHERE id = ?
+    `).bind(id).first();
 
-  if (!report) {
+    if (!report) {
+      return new Response(JSON.stringify({
+        error: 'Report not found',
+        success: false
+      }), {
+        status: 404,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
+
+    // Get associated images
+    const images = await db.prepare(`
+      SELECT id, filename, file_size, mime_type, created_at 
+      FROM images 
+      WHERE report_id = ?
+      ORDER BY created_at
+    `).bind(id).all();
+
     return new Response(JSON.stringify({
-      error: 'Report not found',
-      success: false
+      success: true,
+      data: {
+        ...report,
+        images: images.results || []
+      }
     }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
     });
+  } catch (error) {
+    throw new Error(`Failed to get report: ${error.message}`);
   }
-
-  // Get associated images
-  const images = await db.prepare(`
-    SELECT id, filename, file_size, mime_type, created_at 
-    FROM images 
-    WHERE report_id = ?
-    ORDER BY created_at
-  `).bind(id).all();
-
-  return new Response(JSON.stringify({
-    success: true,
-    data: {
-      ...report,
-      images: images.results
-    }
-  }), {
-    headers: { 
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
 }
 
 // 3. CREATE new report
-async function createReport(request, db) {
-  const data = await request.json();
-  
-  // Validasi
-  if (!data.server_name || !data.status || !data.priority) {
-    return new Response(JSON.stringify({
-      error: 'Missing required fields',
-      success: false
-    }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  // Generate ID
-  const id = `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const timestamp = new Date().toISOString();
-
-  // Insert report
-  await db.prepare(`
-    INSERT INTO reports (id, server_name, ip_address, description, status, priority, platform, timestamp, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    id,
-    data.server_name,
-    data.ip_address || null,
-    data.description || null,
-    data.status,
-    data.priority,
-    data.platform || null,
-    data.timestamp || timestamp,
-    timestamp
-  ).run();
-
-  // Update stats
-  await updateStats(db);
-
-  return new Response(JSON.stringify({
-    success: true,
-    id: id,
-    message: 'Report created successfully'
-  }), {
-    status: 201,
-    headers: { 
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
+async function handleCreateReport(request, db) {
+  try {
+    const data = await request.json();
+    
+    // Validasi
+    if (!data.server_name || !data.status || !data.priority) {
+      return new Response(JSON.stringify({
+        error: 'Missing required fields: server_name, status, priority',
+        success: false
+      }), {
+        status: 400,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-  });
+
+    // Generate ID
+    const id = `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date().toISOString();
+
+    // Insert report
+    const result = await db.prepare(`
+      INSERT INTO reports (id, server_name, ip_address, description, status, priority, platform, timestamp, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      data.server_name,
+      data.ip_address || '',
+      data.description || '',
+      data.status,
+      data.priority,
+      data.platform || '',
+      data.timestamp || timestamp,
+      timestamp
+    ).run();
+
+    if (result.success) {
+      return new Response(JSON.stringify({
+        success: true,
+        id: id,
+        message: 'Report created successfully',
+        timestamp: timestamp
+      }), {
+        status: 201,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    } else {
+      throw new Error('Failed to insert report');
+    }
+  } catch (error) {
+    throw new Error(`Failed to create report: ${error.message}`);
+  }
 }
 
 // 4. DELETE report
-async function deleteReport(id, db) {
-  // Hapus report (images akan terhapus otomatis karena cascade)
-  const result = await db.prepare(`
-    DELETE FROM reports WHERE id = ?
-  `).bind(id).run();
+async function handleDeleteReport(id, db) {
+  try {
+    // Hapus report (images akan terhapus otomatis karena cascade)
+    const result = await db.prepare(`
+      DELETE FROM reports WHERE id = ?
+    `).bind(id).run();
 
-  if (result.changes === 0) {
-    return new Response(JSON.stringify({
-      error: 'Report not found',
-      success: false
-    }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  // Update stats
-  await updateStats(db);
-
-  return new Response(JSON.stringify({
-    success: true,
-    message: 'Report deleted successfully'
-  }), {
-    headers: { 
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
+    if (result.meta.changes === 0) {
+      return new Response(JSON.stringify({
+        error: 'Report not found',
+        success: false
+      }), {
+        status: 404,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-  });
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Report deleted successfully',
+      deleted: result.meta.changes
+    }), {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  } catch (error) {
+    throw new Error(`Failed to delete report: ${error.message}`);
+  }
 }
 
-// 5. UPLOAD image
-async function uploadImage(request, db) {
-  const data = await request.json();
-  
-  if (!data.report_id || !data.image_data || !data.filename) {
-    return new Response(JSON.stringify({
-      error: 'Missing required fields',
-      success: false
-    }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  // Cek apakah report exists
-  const report = await db.prepare(`
-    SELECT id FROM reports WHERE id = ?
-  `).bind(data.report_id).first();
-
-  if (!report) {
-    return new Response(JSON.stringify({
-      error: 'Report not found',
-      success: false
-    }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  // Generate image ID
-  const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  // Simpan image (base64 di D1, maksimal 1MB per row)
-  const base64Data = data.image_data.replace(/^data:image\/\w+;base64,/, '');
-  const buffer = Buffer.from(base64Data, 'base64');
-  
-  if (buffer.length > 1 * 1024 * 1024) { // 1MB limit
-    return new Response(JSON.stringify({
-      error: 'Image too large (max 1MB)',
-      success: false
-    }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  await db.prepare(`
-    INSERT INTO images (id, report_id, filename, file_size, mime_type, data, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    imageId,
-    data.report_id,
-    data.filename,
-    buffer.length,
-    data.mime_type || 'image/png',
-    base64Data, // Simpan sebagai TEXT (base64)
-    new Date().toISOString()
-  ).run();
-
-  return new Response(JSON.stringify({
-    success: true,
-    id: imageId,
-    url: `/api/images/${imageId}`,
-    message: 'Image uploaded successfully'
-  }), {
-    headers: { 
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
+// 5. UPLOAD image (simplified - simpan metadata saja)
+async function handleUploadImage(request, db) {
+  try {
+    const data = await request.json();
+    
+    if (!data.report_id || !data.filename || !data.image_data) {
+      return new Response(JSON.stringify({
+        error: 'Missing required fields: report_id, filename, image_data',
+        success: false
+      }), {
+        status: 400,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-  });
+
+    // Cek apakah report exists
+    const report = await db.prepare(`
+      SELECT id FROM reports WHERE id = ?
+    `).bind(data.report_id).first();
+
+    if (!report) {
+      return new Response(JSON.stringify({
+        error: 'Report not found',
+        success: false
+      }), {
+        status: 404,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
+
+    // Generate image ID
+    const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Simpan metadata saja (simplified untuk D1)
+    // Di production, sebaiknya simpan di R2 dan hanya simpan URL di D1
+    const result = await db.prepare(`
+      INSERT INTO images (id, report_id, filename, file_size, mime_type, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      imageId,
+      data.report_id,
+      data.filename,
+      data.file_size || 0,
+      data.mime_type || 'image/png',
+      new Date().toISOString()
+    ).run();
+
+    if (result.success) {
+      return new Response(JSON.stringify({
+        success: true,
+        id: imageId,
+        filename: data.filename,
+        message: 'Image metadata saved successfully'
+      }), {
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    } else {
+      throw new Error('Failed to save image metadata');
+    }
+  } catch (error) {
+    throw new Error(`Failed to upload image: ${error.message}`);
+  }
 }
 
-// 6. GET image
-async function getImage(id, db) {
-  const image = await db.prepare(`
-    SELECT filename, mime_type, data FROM images WHERE id = ?
-  `).bind(id).first();
+// 6. GET image metadata (simplified)
+async function handleGetImage(id, db) {
+  try {
+    const image = await db.prepare(`
+      SELECT id, filename, file_size, mime_type, created_at 
+      FROM images WHERE id = ?
+    `).bind(id).first();
 
-  if (!image) {
-    return new Response(JSON.stringify({
-      error: 'Image not found',
-      success: false
-    }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  // Convert base64 to buffer
-  const buffer = Buffer.from(image.data, 'base64');
-  
-  return new Response(buffer, {
-    headers: {
-      'Content-Type': image.mime_type,
-      'Content-Disposition': `inline; filename="${image.filename}"`,
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'public, max-age=31536000'
+    if (!image) {
+      return new Response(JSON.stringify({
+        error: 'Image not found',
+        success: false
+      }), {
+        status: 404,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-  });
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: image
+    }), {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  } catch (error) {
+    throw new Error(`Failed to get image: ${error.message}`);
+  }
 }
 
 // 7. GET stats
-async function getStats(db) {
-  // Get report statistics
-  const stats = await db.prepare(`
-    SELECT 
-      COUNT(*) as total_reports,
-      SUM(CASE WHEN status IN ('on-progress', 'pending') THEN 1 ELSE 0 END) as active_issues,
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-      SUM(CASE WHEN priority = 'critical' THEN 1 ELSE 0 END) as critical_count
-    FROM reports
-  `).first();
+async function handleGetStats(db) {
+  try {
+    // Get report statistics
+    const stats = await db.prepare(`
+      SELECT 
+        COUNT(*) as total_reports,
+        SUM(CASE WHEN status IN ('on-progress', 'pending') THEN 1 ELSE 0 END) as active_issues,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN priority = 'critical' THEN 1 ELSE 0 END) as critical_count,
+        SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END) as high_count
+      FROM reports
+    `).first();
 
-  // Get image statistics
-  const imageStats = await db.prepare(`
-    SELECT 
-      COUNT(*) as total_images,
-      COALESCE(SUM(file_size), 0) as total_size_bytes
-    FROM images
-  `).first();
+    // Get image statistics
+    const imageStats = await db.prepare(`
+      SELECT 
+        COUNT(*) as total_images,
+        COALESCE(SUM(file_size), 0) as total_size_bytes
+      FROM images
+    `).first();
 
-  return new Response(JSON.stringify({
-    success: true,
-    data: {
-      reports: stats,
-      images: imageStats,
-      updated_at: new Date().toISOString()
-    }
-  }), {
-    headers: { 
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        reports: stats || {
+          total_reports: 0,
+          active_issues: 0,
+          completed: 0,
+          critical_count: 0,
+          high_count: 0
+        },
+        images: imageStats || {
+          total_images: 0,
+          total_size_bytes: 0
+        },
+        timestamp: new Date().toISOString()
+      }
+    }), {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  } catch (error) {
+    throw new Error(`Failed to get stats: ${error.message}`);
+  }
 }
 
-// 8. Update stats helper
-async function updateStats(db) {
-  const stats = await db.prepare(`
-    SELECT 
-      COUNT(*) as total_reports,
-      SUM(CASE WHEN status IN ('on-progress', 'pending') THEN 1 ELSE 0 END) as active_issues
-    FROM reports
-  `).first();
-
-  await db.prepare(`
-    UPDATE system_stats 
-    SET total_reports = ?, active_issues = ?, last_updated = ?
-    WHERE id = 1
-  `).bind(
-    stats.total_reports || 0,
-    stats.active_issues || 0,
-    new Date().toISOString()
-  ).run();
-}
-
-// 9. Serve frontend HTML
+// 8. Serve frontend HTML
 async function serveFrontend() {
   const html = `
     <!DOCTYPE html>
@@ -369,49 +397,175 @@ async function serveFrontend() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>IT Report System - Cloudflare D1</title>
         <style>
-            body { font-family: Arial, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
-            .header { background: linear-gradient(135deg, #2c3e50, #3498db); color: white; padding: 20px; border-radius: 10px; }
-            .card { background: white; border-radius: 10px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            .api-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; }
+            body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                padding: 20px; 
+                max-width: 1200px; 
+                margin: 0 auto;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+            }
+            .container {
+                background: white;
+                border-radius: 20px;
+                padding: 40px;
+                margin-top: 20px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            }
+            .header { 
+                text-align: center;
+                margin-bottom: 40px;
+            }
+            .header h1 { 
+                color: #2c3e50; 
+                margin-bottom: 10px;
+                font-size: 2.5rem;
+            }
+            .badge {
+                display: inline-block;
+                padding: 8px 16px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border-radius: 20px;
+                font-size: 0.9rem;
+                font-weight: 600;
+                margin-top: 10px;
+            }
+            .api-endpoint {
+                background: #f8f9fa;
+                border-left: 4px solid #3498db;
+                padding: 15px;
+                margin: 15px 0;
+                border-radius: 5px;
+            }
+            .api-endpoint code {
+                background: #2c3e50;
+                color: white;
+                padding: 5px 10px;
+                border-radius: 4px;
+                font-family: monospace;
+            }
+            .status {
+                padding: 20px;
+                background: #e8f4fd;
+                border-radius: 10px;
+                margin: 20px 0;
+            }
+            .status.good { background: #d4edda; }
+            .status.error { background: #f8d7da; }
         </style>
+        <script>
+            async function checkHealth() {
+                try {
+                    const response = await fetch('/api/health');
+                    const data = await response.json();
+                    const statusDiv = document.getElementById('healthStatus');
+                    statusDiv.className = 'status ' + (data.status === 'ok' ? 'good' : 'error');
+                    statusDiv.innerHTML = \`
+                        <h3>Health Check: \${data.status === 'ok' ? '✅ Healthy' : '❌ Error'}</h3>
+                        <p>Database: \${data.database}</p>
+                        <p>Timestamp: \${new Date().toLocaleString()}</p>
+                    \`;
+                } catch (error) {
+                    document.getElementById('healthStatus').innerHTML = \`
+                        <h3>Health Check: ❌ Error</h3>
+                        <p>Error: \${error.message}</p>
+                    \`;
+                }
+            }
+            
+            async function testAPI() {
+                try {
+                    const response = await fetch('/api/stats');
+                    const data = await response.json();
+                    document.getElementById('testResult').innerHTML = \`
+                        <h4>✅ API Test Successful</h4>
+                        <pre>\${JSON.stringify(data, null, 2)}</pre>
+                    \`;
+                } catch (error) {
+                    document.getElementById('testResult').innerHTML = \`
+                        <h4>❌ API Test Failed</h4>
+                        <p>Error: \${error.message}</p>
+                    \`;
+                }
+            }
+            
+            window.onload = function() {
+                checkHealth();
+                testAPI();
+            };
+        </script>
     </head>
     <body>
-        <div class="header">
-            <h1>🚀 IT Report System API</h1>
-            <p>Powered by Cloudflare D1 Database (SQLite) - 100% Gratis</p>
-        </div>
-        
-        <div class="card">
-            <h2>📊 API Endpoints</h2>
-            <div class="api-info">
-                <h3>GET <code>/api/reports</code></h3>
-                <p>Get all reports</p>
+        <div class="container">
+            <div class="header">
+                <h1>🚀 IT Report System API</h1>
+                <p>Powered by Cloudflare D1 Database (SQLite) - 100% Gratis</p>
+                <div class="badge">Status: Online • D1 Database Connected</div>
             </div>
-            <div class="api-info">
-                <h3>POST <code>/api/reports</code></h3>
-                <p>Create new report</p>
-                <pre>{
+            
+            <div id="healthStatus" class="status">
+                Checking health status...
+            </div>
+            
+            <div style="margin: 30px 0;">
+                <h2>📊 API Endpoints</h2>
+                
+                <div class="api-endpoint">
+                    <h3>GET <code>/api/reports</code></h3>
+                    <p>Get all reports (latest 100)</p>
+                    <button onclick="fetch('/api/reports').then(r => r.json()).then(d => alert(JSON.stringify(d, null, 2)))">Test</button>
+                </div>
+                
+                <div class="api-endpoint">
+                    <h3>POST <code>/api/reports</code></h3>
+                    <p>Create new report</p>
+                    <pre style="background: #f1f1f1; padding: 10px; border-radius: 5px;">
+{
   "server_name": "PROD-WEB-01",
   "ip_address": "192.168.1.100",
   "status": "on-progress",
   "priority": "high"
 }</pre>
+                </div>
+                
+                <div class="api-endpoint">
+                    <h3>GET <code>/api/stats</code></h3>
+                    <p>Get system statistics</p>
+                    <div id="testResult"></div>
+                </div>
+                
+                <div class="api-endpoint">
+                    <h3>GET <code>/api/health</code></h3>
+                    <p>Health check endpoint</p>
+                </div>
             </div>
-            <div class="api-info">
-                <h3>GET <code>/api/stats</code></h3>
-                <p>Get system statistics</p>
+            
+            <div style="margin-top: 40px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
+                <h3>🛠️ Getting Started</h3>
+                <ol>
+                    <li>Use the API endpoints with your frontend application</li>
+                    <li>All data is stored in Cloudflare D1 SQLite database</li>
+                    <li>100% Free Tier - no credit card required</li>
+                    <li>Global CDN with automatic HTTPS</li>
+                </ol>
+                
+                <p style="margin-top: 20px;">
+                    <strong>Frontend URL:</strong> 
+                    <a href="/index.html" id="frontendLink">/index.html</a>
+                </p>
+            </div>
+            
+            <div style="margin-top: 30px; text-align: center; color: #666; font-size: 0.9rem;">
+                <p>Powered by Cloudflare Workers + D1 Database</p>
+                <p>Deployed: ${new Date().toLocaleDateString()}</p>
             </div>
         </div>
         
-        <div class="card">
-            <h2>🛠️ How to Use</h2>
-            <ol>
-                <li>Use the API endpoints with your frontend</li>
-                <li>All data stored in D1 SQLite database</li>
-                <li>Images stored as base64 in database</li>
-                <li>100% Free Cloudflare tier</li>
-            </ol>
-        </div>
+        <script>
+            // Set frontend link dynamically
+            document.getElementById('frontendLink').href = window.location.origin + '/index.html';
+        </script>
     </body>
     </html>
   `;

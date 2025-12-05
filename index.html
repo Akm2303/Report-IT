@@ -18,13 +18,13 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
         }
         
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+            background: #f5f7fa;
             color: #333;
+            line-height: 1.6;
         }
         
         .container {
@@ -33,52 +33,51 @@
             padding: 20px;
         }
         
-        .glass-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 25px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
         .header {
-            text-align: center;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
             margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
         }
         
         .header h1 {
-            color: var(--primary);
-            font-size: 2.5rem;
+            font-size: 2.2rem;
             margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
         }
         
         .badge {
             display: inline-block;
+            background: rgba(255,255,255,0.2);
             padding: 8px 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
             border-radius: 20px;
+            margin-top: 15px;
             font-size: 0.9rem;
-            font-weight: 600;
-            margin-top: 10px;
         }
         
-        .grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 25px;
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border-left: 4px solid var(--secondary);
         }
         
-        @media (max-width: 1024px) {
-            .grid {
-                grid-template-columns: 1fr;
-            }
+        .card h2 {
+            color: var(--primary);
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .form-group {
@@ -93,56 +92,54 @@
             font-size: 0.95rem;
         }
         
-        .input-group {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        
-        input, select, textarea {
+        .form-control {
             width: 100%;
-            padding: 14px 16px;
+            padding: 12px 15px;
             border: 2px solid #e1e5e9;
-            border-radius: 10px;
+            border-radius: 8px;
             font-size: 16px;
             transition: all 0.3s;
             background: white;
         }
         
-        input:focus, select:focus, textarea:focus {
+        .form-control:focus {
             outline: none;
             border-color: var(--secondary);
             box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
         }
         
-        textarea {
+        select.form-control {
+            cursor: pointer;
+        }
+        
+        textarea.form-control {
             min-height: 120px;
             resize: vertical;
         }
         
         .upload-area {
-            border: 3px dashed #bdc3c7;
-            border-radius: 15px;
-            padding: 40px 20px;
+            border: 2px dashed #bdc3c7;
+            border-radius: 10px;
+            padding: 30px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
             background: #f8f9fa;
+            margin-bottom: 20px;
         }
         
-        .upload-area:hover, .upload-area.dragover {
+        .upload-area:hover {
             border-color: var(--secondary);
             background: rgba(52, 152, 219, 0.05);
-            transform: translateY(-2px);
         }
         
         .upload-icon {
             font-size: 48px;
+            color: var(--secondary);
             margin-bottom: 15px;
-            opacity: 0.7;
         }
         
-        .preview-grid {
+        .preview-container {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
             gap: 15px;
@@ -151,14 +148,9 @@
         
         .preview-item {
             position: relative;
-            border-radius: 10px;
+            border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-            transition: transform 0.3s;
-        }
-        
-        .preview-item:hover {
-            transform: translateY(-5px);
         }
         
         .preview-item img {
@@ -175,18 +167,16 @@
             color: white;
             border: none;
             border-radius: 50%;
-            width: 28px;
-            height: 28px;
+            width: 25px;
+            height: 25px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            font-size: 14px;
         }
         
         .btn {
             padding: 14px 28px;
             border: none;
-            border-radius: 10px;
+            border-radius: 8px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
@@ -204,12 +194,24 @@
         
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(52, 152, 219, 0.4);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
         }
         
         .btn-success {
             background: linear-gradient(135deg, var(--success), #219653);
             color: white;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger), #c0392b);
+            color: white;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 30px;
         }
         
         .stats-grid {
@@ -220,21 +222,15 @@
         }
         
         .stat-card {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
             text-align: center;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-            border-top: 5px solid var(--secondary);
-            transition: transform 0.3s;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-5px);
+            border-left: 4px solid var(--secondary);
         }
         
         .stat-value {
-            font-size: 2.5rem;
+            font-size: 2rem;
             font-weight: 700;
             color: var(--primary);
             margin: 10px 0;
@@ -251,20 +247,17 @@
         }
         
         th {
-            background: linear-gradient(135deg, var(--primary), #1a252f);
-            color: white;
-            padding: 18px 15px;
+            background: #f8f9fa;
+            padding: 16px;
             text-align: left;
             font-weight: 600;
+            color: var(--primary);
+            border-bottom: 2px solid #eee;
         }
         
         td {
-            padding: 16px 15px;
-            border-bottom: 1px solid #f1f2f6;
-        }
-        
-        tr:hover {
-            background: #f8f9fa;
+            padding: 16px;
+            border-bottom: 1px solid #eee;
         }
         
         .status-badge {
@@ -275,10 +268,9 @@
             display: inline-block;
         }
         
-        .status-on-progress { background: #fff3cd; color: #856404; }
+        .status-progress { background: #fff3cd; color: #856404; }
         .status-completed { background: #d4edda; color: #155724; }
         .status-pending { background: #d1ecf1; color: #0c5460; }
-        .status-cancelled { background: #f8d7da; color: #721c24; }
         
         .priority-badge {
             padding: 6px 12px;
@@ -292,23 +284,6 @@
         .priority-medium { background: #fff3cd; color: #856404; }
         .priority-high { background: #f8d7da; color: #721c24; }
         .priority-critical { background: #721c24; color: white; }
-        
-        .action-buttons {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .action-btn {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .btn-view { background: var(--info); color: white; }
-        .btn-delete { background: var(--danger); color: white; }
         
         .loading {
             display: none;
@@ -340,14 +315,15 @@
             bottom: 20px;
             right: 20px;
             padding: 15px 25px;
-            border-radius: 10px;
+            background: var(--primary);
             color: white;
-            font-weight: 500;
+            border-radius: 8px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             z-index: 1000;
             transform: translateY(100px);
             opacity: 0;
             transition: all 0.3s;
+            max-width: 400px;
         }
         
         .toast.show {
@@ -359,215 +335,217 @@
         .toast.error { background: var(--danger); }
         .toast.info { background: var(--info); }
         
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #7f8c8d;
-        }
-        
-        .empty-state img {
-            width: 120px;
-            opacity: 0.5;
-            margin-bottom: 20px;
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+            
+            table {
+                display: block;
+                overflow-x: auto;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="glass-card header">
-            <h1>
-                <span>📊</span>
-                IT Report System
-                <span>🚀</span>
-            </h1>
-            <p>Manage IT incidents with evidence tracking using Cloudflare D1 Database</p>
-            <div class="badge">Powered by Cloudflare D1 SQLite • 100% Free</div>
+        <!-- Header -->
+        <div class="header">
+            <h1>📊 IT Report System</h1>
+            <p>Cloudflare D1 Database • 100% Free • No Server Required</p>
+            <div class="badge">Worker Status: <span id="workerStatus">Checking...</span></div>
         </div>
 
-        <div class="grid">
-            <!-- Form Section -->
-            <div class="glass-card">
-                <h2 style="margin-bottom: 25px; color: var(--primary);">➕ Create New Report</h2>
-                
-                <div class="form-group">
-                    <label>🖥️ Server Information</label>
-                    <div class="input-group">
-                        <input type="text" id="serverName" placeholder="Server Name (e.g., PROD-WEB-01)" required>
-                        <input type="text" id="ipAddress" placeholder="IP Address (e.g., 192.168.1.100)">
-                    </div>
+        <!-- Stats Dashboard -->
+        <div class="card">
+            <h2>📈 Live Dashboard</h2>
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-card">
+                    <div>📊 Total Reports</div>
+                    <div class="stat-value" id="totalReports">0</div>
                 </div>
-                
-                <div class="form-group">
-                    <label>📝 Description</label>
-                    <textarea id="description" placeholder="Describe the issue, error messages, and impact..."></textarea>
+                <div class="stat-card">
+                    <div>⚠️ Active Issues</div>
+                    <div class="stat-value" id="activeIssues">0</div>
                 </div>
-                
-                <div class="form-group">
-                    <label>🏷️ Status</label>
-                    <select id="status" class="form-control">
-                        <option value="">Select Status</option>
-                        <option value="on-progress">🟡 On Progress</option>
-                        <option value="completed">🟢 Completed</option>
-                        <option value="pending">⏳ Pending</option>
-                        <option value="cancelled">🔴 Cancelled</option>
-                    </select>
+                <div class="stat-card">
+                    <div>✅ Completed</div>
+                    <div class="stat-value" id="completed">0</div>
                 </div>
-                
-                <div class="form-group">
-                    <label>🚨 Priority</label>
-                    <select id="priority" class="form-control" required>
-                        <option value="">Select Priority</option>
-                        <option value="low">🟢 Low</option>
-                        <option value="medium">🟡 Medium</option>
-                        <option value="high">🟠 High</option>
-                        <option value="critical">🔴 Critical</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label>🖥️ Monitoring Platform</label>
-                    <select id="platform" class="form-control">
-                        <option value="">Select Platform</option>
-                        <option value="zabbix">Zabbix</option>
-                        <option value="prometheus">Prometheus</option>
-                        <option value="grafana">Grafana</option>
-                        <option value="prtg">PRTG</option>
-                        <option value="custom">Custom</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label>📸 Evidence Screenshots</label>
-                    <div class="upload-area" id="uploadArea">
-                        <div class="upload-icon">📤</div>
-                        <p style="font-weight: 600; margin-bottom: 5px;">Drag & drop screenshots</p>
-                        <p style="color: #7f8c8d; font-size: 0.9rem;">or click to select files (max 5 images, 1MB each)</p>
-                        <input type="file" id="fileInput" accept="image/*" multiple style="display: none;">
-                    </div>
-                    
-                    <div class="preview-grid" id="previewGrid"></div>
-                </div>
-                
-                <div class="form-group" style="margin-top: 30px;">
-                    <button class="btn btn-primary" id="saveBtn" style="width: 100%;">
-                        <span>💾</span>
-                        Save to Cloudflare D1 Database
-                    </button>
+                <div class="stat-card">
+                    <div>🔴 Critical</div>
+                    <div class="stat-value" id="critical">0</div>
                 </div>
             </div>
+            <button class="btn btn-success" id="refreshBtn">🔄 Refresh Dashboard</button>
+        </div>
 
-            <!-- Stats Section -->
-            <div class="glass-card">
-                <h2 style="margin-bottom: 25px; color: var(--primary);">📈 Live Statistics</h2>
-                
-                <div class="stats-grid" id="statsGrid">
-                    <div class="stat-card">
-                        <div style="color: var(--secondary); font-size: 1.2rem;">📊</div>
-                        <div class="stat-value" id="totalReports">0</div>
-                        <div>Total Reports</div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <div style="color: var(--warning); font-size: 1.2rem;">⚠️</div>
-                        <div class="stat-value" id="activeIssues">0</div>
-                        <div>Active Issues</div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <div style="color: var(--success); font-size: 1.2rem;">✅</div>
-                        <div class="stat-value" id="completed">0</div>
-                        <div>Completed</div>
-                    </div>
-                    
-                    <div class="stat-card">
-                        <div style="color: var(--danger); font-size: 1.2rem;">🔴</div>
-                        <div class="stat-value" id="critical">0</div>
-                        <div>Critical</div>
-                    </div>
+        <!-- Report Form -->
+        <div class="card">
+            <h2>➕ Create New Report</h2>
+            
+            <div class="form-group">
+                <label>🖥️ Server Information</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <input type="text" id="serverName" class="form-control" placeholder="Server Name" required>
+                    <input type="text" id="ipAddress" class="form-control" placeholder="IP Address">
                 </div>
-                
-                <div style="margin-top: 30px;">
-                    <button class="btn btn-success" id="refreshBtn" style="width: 100%;">
-                        <span>🔄</span>
-                        Refresh Dashboard Data
-                    </button>
+            </div>
+            
+            <div class="form-group">
+                <label>📝 Description</label>
+                <textarea id="description" class="form-control" placeholder="Describe the issue..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>🏷️ Status</label>
+                <select id="status" class="form-control" required>
+                    <option value="">Select Status</option>
+                    <option value="on-progress">🟡 On Progress</option>
+                    <option value="completed">🟢 Completed</option>
+                    <option value="pending">⏳ Pending</option>
+                    <option value="cancelled">🔴 Cancelled</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>🚨 Priority</label>
+                <select id="priority" class="form-control" required>
+                    <option value="">Select Priority</option>
+                    <option value="low">🟢 Low</option>
+                    <option value="medium">🟡 Medium</option>
+                    <option value="high">🟠 High</option>
+                    <option value="critical">🔴 Critical</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>🖥️ Monitoring Platform</label>
+                <select id="platform" class="form-control">
+                    <option value="">Select Platform</option>
+                    <option value="Zabbix">Zabbix</option>
+                    <option value="Prometheus">Prometheus</option>
+                    <option value="Grafana">Grafana</option>
+                    <option value="PRTG">PRTG</option>
+                    <option value="Custom">Custom</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>📸 Evidence Screenshots</label>
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📤</div>
+                    <p style="font-weight: 600;">Drag & drop screenshots or click to select</p>
+                    <p style="color: #666; font-size: 0.9rem;">PNG, JPG, JPEG (Max 1MB each)</p>
+                    <input type="file" id="fileInput" accept="image/*" multiple style="display: none;">
                 </div>
-                
-                <div style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
-                    <h4 style="color: var(--primary); margin-bottom: 10px;">ℹ️ Database Info</h4>
-                    <div style="font-size: 0.9rem; color: #666;">
-                        <div>📍 Storage: Cloudflare D1 SQLite</div>
-                        <div>💰 Cost: 100% Free Tier</div>
-                        <div>📁 Images: Base64 in database</div>
-                        <div>🔒 Security: HTTPS only</div>
-                    </div>
-                </div>
+                <div class="preview-container" id="previewContainer"></div>
+            </div>
+            
+            <div class="action-buttons">
+                <button class="btn btn-primary" id="saveBtn">💾 Save to D1 Database</button>
+                <button class="btn" id="clearBtn" style="background: #95a5a6; color: white;">🗑️ Clear Form</button>
             </div>
         </div>
 
         <!-- Reports Table -->
-        <div class="glass-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-                <h2 style="color: var(--primary);">📋 Recent Reports</h2>
-                <div style="font-size: 0.9rem; color: #666;">
-                    Last updated: <span id="lastUpdated">Just now</span>
-                </div>
-            </div>
+        <div class="card">
+            <h2>📋 Recent Reports</h2>
             
             <div class="loading" id="loading">
                 <div class="spinner"></div>
                 <p>Loading reports from Cloudflare D1...</p>
             </div>
             
-            <div id="reportsContainer">
-                <table id="reportsTable">
-                    <thead>
-                        <tr>
-                            <th>Server</th>
-                            <th>IP Address</th>
-                            <th>Status</th>
-                            <th>Priority</th>
-                            <th>Platform</th>
-                            <th>Created</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="reportsBody">
-                        <!-- Data will be loaded here -->
-                    </tbody>
-                </table>
-                
-                <div id="emptyState" class="empty-state" style="display: none;">
-                    <div>📭</div>
-                    <h3 style="margin: 15px 0; color: #7f8c8d;">No Reports Yet</h3>
-                    <p>Create your first IT incident report using the form above</p>
+            <table id="reportsTable">
+                <thead>
+                    <tr>
+                        <th>Server</th>
+                        <th>IP Address</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Time</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="reportsBody">
+                    <!-- Data will be loaded here -->
+                </tbody>
+            </table>
+            
+            <div id="emptyState" style="text-align: center; padding: 40px; display: none;">
+                <div style="font-size: 48px; margin-bottom: 20px; opacity: 0.5;">📭</div>
+                <h3 style="color: #7f8c8d;">No Reports Yet</h3>
+                <p>Create your first report using the form above</p>
+            </div>
+        </div>
+
+        <!-- Database Info -->
+        <div class="card">
+            <h2>ℹ️ System Information</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                <div>
+                    <h4>📊 Database</h4>
+                    <p>Cloudflare D1 (SQLite)</p>
+                    <p>100% Free Tier</p>
+                </div>
+                <div>
+                    <h4>🚀 Worker</h4>
+                    <p>URL: <span id="workerUrl">Loading...</span></p>
+                    <p>Status: <span id="workerHealth">Checking...</span></p>
+                </div>
+                <div>
+                    <h4>🛡️ Security</h4>
+                    <p>HTTPS Auto-enabled</p>
+                    <p>CORS Configured</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Toast Notifications -->
+    <!-- Toast Container -->
     <div id="toastContainer"></div>
 
     <script>
-        // Configuration - GANTI dengan Worker URL Anda
-        const WORKER_URL = 'https://your-worker.your-account.workers.dev';
-        
-        // Global variables
+        // Configuration
+        const WORKER_URL = window.location.origin; // Gunakan origin yang sama
         let uploadedImages = [];
-        let currentReports = [];
         
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
-            initEventListeners();
+            console.log('IT Report System Initializing...');
+            console.log('Worker URL:', WORKER_URL);
+            
+            // Set worker URL display
+            document.getElementById('workerUrl').textContent = WORKER_URL;
+            
+            // Setup event listeners
+            setupEventListeners();
+            
+            // Load initial data
             loadDashboard();
+            
+            // Check worker health
+            checkWorkerHealth();
             
             // Auto-refresh every 30 seconds
             setInterval(loadDashboard, 30000);
         });
         
-        // Initialize event listeners
-        function initEventListeners() {
+        // Setup event listeners
+        function setupEventListeners() {
             // File upload
             const uploadArea = document.getElementById('uploadArea');
             const fileInput = document.getElementById('fileInput');
@@ -576,16 +554,19 @@
             
             uploadArea.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                uploadArea.classList.add('dragover');
+                uploadArea.style.borderColor = '#3498db';
+                uploadArea.style.background = 'rgba(52, 152, 219, 0.05)';
             });
             
             uploadArea.addEventListener('dragleave', () => {
-                uploadArea.classList.remove('dragover');
+                uploadArea.style.borderColor = '#bdc3c7';
+                uploadArea.style.background = '#f8f9fa';
             });
             
             uploadArea.addEventListener('drop', (e) => {
                 e.preventDefault();
-                uploadArea.classList.remove('dragover');
+                uploadArea.style.borderColor = '#bdc3c7';
+                uploadArea.style.background = '#f8f9fa';
                 handleFiles(e.dataTransfer.files);
             });
             
@@ -596,19 +577,16 @@
             // Save button
             document.getElementById('saveBtn').addEventListener('click', saveReport);
             
+            // Clear button
+            document.getElementById('clearBtn').addEventListener('click', clearForm);
+            
             // Refresh button
             document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
         }
         
         // Handle file uploads
         function handleFiles(files) {
-            const maxFiles = 5;
             const maxSize = 1 * 1024 * 1024; // 1MB
-            
-            if (uploadedImages.length + files.length > maxFiles) {
-                showToast('Maximum 5 images allowed', 'error');
-                return;
-            }
             
             for (let file of files) {
                 if (file.size > maxSize) {
@@ -640,7 +618,7 @@
         
         // Create image preview
         function createImagePreview(imageData) {
-            const previewGrid = document.getElementById('previewGrid');
+            const container = document.getElementById('previewContainer');
             
             const previewItem = document.createElement('div');
             previewItem.className = 'preview-item';
@@ -660,7 +638,7 @@
             
             previewItem.appendChild(img);
             previewItem.appendChild(removeBtn);
-            previewGrid.appendChild(previewItem);
+            container.appendChild(previewItem);
         }
         
         // Save report to D1
@@ -673,17 +651,29 @@
             const platform = document.getElementById('platform').value;
             
             // Validation
-            if (!serverName || !status || !priority) {
-                showToast('Please fill Server Name, Status, and Priority', 'error');
+            if (!serverName) {
+                showToast('Server Name is required', 'error');
+                return;
+            }
+            
+            if (!status) {
+                showToast('Status is required', 'error');
+                return;
+            }
+            
+            if (!priority) {
+                showToast('Priority is required', 'error');
                 return;
             }
             
             // Show loading
-            document.getElementById('saveBtn').innerHTML = '⏳ Saving to D1...';
-            document.getElementById('saveBtn').disabled = true;
+            const saveBtn = document.getElementById('saveBtn');
+            const originalText = saveBtn.innerHTML;
+            saveBtn.innerHTML = '⏳ Saving...';
+            saveBtn.disabled = true;
             
             try {
-                // 1. Create report in D1
+                // Prepare report data
                 const reportData = {
                     server_name: serverName,
                     ip_address: ipAddress,
@@ -694,7 +684,10 @@
                     timestamp: new Date().toISOString()
                 };
                 
-                const createResponse = await fetch(`${WORKER_URL}/api/reports`, {
+                console.log('Saving report:', reportData);
+                
+                // Send to worker API
+                const response = await fetch(`${WORKER_URL}/api/reports`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -702,48 +695,45 @@
                     body: JSON.stringify(reportData)
                 });
                 
-                const createResult = await createResponse.json();
+                const result = await response.json();
                 
-                if (!createResult.success) {
-                    throw new Error(createResult.error || 'Failed to create report');
-                }
-                
-                const reportId = createResult.id;
-                
-                // 2. Upload images if any
-                if (uploadedImages.length > 0) {
-                    for (const image of uploadedImages) {
-                        const imageData = {
-                            report_id: reportId,
-                            image_data: image.dataURL,
-                            filename: image.name,
-                            mime_type: image.type
-                        };
-                        
-                        await fetch(`${WORKER_URL}/api/images`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(imageData)
-                        });
+                if (result.success) {
+                    const reportId = result.id;
+                    
+                    // Upload images if any
+                    if (uploadedImages.length > 0) {
+                        for (const image of uploadedImages) {
+                            const imageData = {
+                                report_id: reportId,
+                                filename: image.name,
+                                file_size: image.size,
+                                mime_type: image.type,
+                                image_data: image.dataURL // Base64 data
+                            };
+                            
+                            await fetch(`${WORKER_URL}/api/images`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(imageData)
+                            });
+                        }
                     }
+                    
+                    showToast('✅ Report saved successfully!', 'success');
+                    clearForm();
+                    loadDashboard();
+                } else {
+                    throw new Error(result.error || 'Failed to save report');
                 }
-                
-                // 3. Clear form and show success
-                clearForm();
-                showToast('✅ Report saved to Cloudflare D1 Database!', 'success');
-                
-                // 4. Reload dashboard
-                loadDashboard();
-                
             } catch (error) {
                 console.error('Error saving report:', error);
-                showToast(`Error: ${error.message}`, 'error');
+                showToast(`❌ Error: ${error.message}`, 'error');
             } finally {
                 // Reset button
-                document.getElementById('saveBtn').innerHTML = '💾 Save to Cloudflare D1 Database';
-                document.getElementById('saveBtn').disabled = false;
+                saveBtn.innerHTML = originalText;
+                saveBtn.disabled = false;
             }
         }
         
@@ -754,13 +744,14 @@
                 document.getElementById('loading').classList.add('active');
                 
                 // Load reports
-                const reportsResponse = await fetch(`${WORKER_URL}/api/reports`);
-                const reportsResult = await reportsResponse.json();
+                const response = await fetch(`${WORKER_URL}/api/reports`);
+                const result = await response.json();
                 
-                if (reportsResult.success) {
-                    currentReports = reportsResult.data;
-                    displayReports(currentReports);
-                    updateStats(currentReports);
+                if (result.success) {
+                    displayReports(result.data);
+                    updateStats(result.data);
+                } else {
+                    throw new Error(result.error || 'Failed to load reports');
                 }
                 
                 // Load statistics
@@ -771,17 +762,9 @@
                     updateDashboardStats(statsResult.data);
                 }
                 
-                // Update timestamp
-                document.getElementById('lastUpdated').textContent = 
-                    new Date().toLocaleTimeString('id-ID', { 
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        second: '2-digit'
-                    });
-                
             } catch (error) {
                 console.error('Error loading dashboard:', error);
-                showToast('Failed to load data. Check connection.', 'error');
+                showToast('Failed to load data. Check console for details.', 'error');
             } finally {
                 document.getElementById('loading').classList.remove('active');
             }
@@ -791,15 +774,16 @@
         function displayReports(reports) {
             const tbody = document.getElementById('reportsBody');
             const emptyState = document.getElementById('emptyState');
+            const table = document.getElementById('reportsTable');
             
-            if (reports.length === 0) {
+            if (!reports || reports.length === 0) {
                 tbody.innerHTML = '';
-                document.getElementById('reportsTable').style.display = 'none';
+                table.style.display = 'none';
                 emptyState.style.display = 'block';
                 return;
             }
             
-            document.getElementById('reportsTable').style.display = 'table';
+            table.style.display = 'table';
             emptyState.style.display = 'none';
             
             tbody.innerHTML = '';
@@ -808,10 +792,11 @@
                 const row = document.createElement('tr');
                 
                 // Format date
-                const date = new Date(report.created_at);
+                const date = new Date(report.created_at || report.timestamp);
                 const dateStr = date.toLocaleDateString('id-ID', {
                     day: '2-digit',
-                    month: 'short'
+                    month: 'short',
+                    year: 'numeric'
                 });
                 const timeStr = date.toLocaleTimeString('id-ID', {
                     hour: '2-digit',
@@ -820,46 +805,37 @@
                 
                 // Status badge
                 let statusBadge = '';
-                let statusText = '';
                 switch(report.status) {
                     case 'on-progress':
-                        statusBadge = '<span class="status-badge status-on-progress">🟡 On Progress</span>';
-                        statusText = 'On Progress';
+                        statusBadge = '<span class="status-badge status-progress">🟡 On Progress</span>';
                         break;
                     case 'completed':
                         statusBadge = '<span class="status-badge status-completed">🟢 Completed</span>';
-                        statusText = 'Completed';
                         break;
                     case 'pending':
                         statusBadge = '<span class="status-badge status-pending">⏳ Pending</span>';
-                        statusText = 'Pending';
                         break;
-                    case 'cancelled':
-                        statusBadge = '<span class="status-badge status-cancelled">🔴 Cancelled</span>';
-                        statusText = 'Cancelled';
-                        break;
+                    default:
+                        statusBadge = `<span class="status-badge">${report.status}</span>`;
                 }
                 
                 // Priority badge
                 let priorityBadge = '';
-                let priorityText = '';
                 switch(report.priority) {
                     case 'low':
-                        priorityBadge = '<span class="priority-badge priority-low">🟢 Low</span>';
-                        priorityText = 'Low';
+                        priorityBadge = '<span class="priority-badge priority-low">Low</span>';
                         break;
                     case 'medium':
-                        priorityBadge = '<span class="priority-badge priority-medium">🟡 Medium</span>';
-                        priorityText = 'Medium';
+                        priorityBadge = '<span class="priority-badge priority-medium">Medium</span>';
                         break;
                     case 'high':
-                        priorityBadge = '<span class="priority-badge priority-high">🟠 High</span>';
-                        priorityText = 'High';
+                        priorityBadge = '<span class="priority-badge priority-high">High</span>';
                         break;
                     case 'critical':
-                        priorityBadge = '<span class="priority-badge priority-critical">🔴 Critical</span>';
-                        priorityText = 'Critical';
+                        priorityBadge = '<span class="priority-badge priority-critical">Critical</span>';
                         break;
+                    default:
+                        priorityBadge = `<span class="priority-badge">${report.priority}</span>`;
                 }
                 
                 row.innerHTML = `
@@ -870,20 +846,15 @@
                     <td>${report.ip_address || '-'}</td>
                     <td>${statusBadge}</td>
                     <td>${priorityBadge}</td>
-                    <td>${report.platform || '-'}</td>
                     <td>
                         <div style="font-weight: 600;">${dateStr}</div>
                         <div style="font-size: 0.85rem; color: #666;">${timeStr}</div>
                     </td>
                     <td>
-                        <div class="action-buttons">
-                            <button class="action-btn btn-view" onclick="viewReport('${report.id}')">
-                                👁️ View
-                            </button>
-                            <button class="action-btn btn-delete" onclick="deleteReport('${report.id}')">
-                                🗑️ Delete
-                            </button>
-                        </div>
+                        <button class="btn" style="padding: 6px 12px; background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer;" 
+                                onclick="deleteReport('${report.id}')">
+                            🗑️ Delete
+                        </button>
                     </td>
                 `;
                 
@@ -891,7 +862,7 @@
             });
         }
         
-        // Update dashboard statistics
+        // Update stats from reports data
         function updateStats(reports) {
             const totalReports = reports.length;
             const activeIssues = reports.filter(r => 
@@ -908,7 +879,7 @@
         
         // Update dashboard stats from API
         function updateDashboardStats(stats) {
-            if (stats.reports) {
+            if (stats && stats.reports) {
                 document.getElementById('totalReports').textContent = stats.reports.total_reports || 0;
                 document.getElementById('activeIssues').textContent = stats.reports.active_issues || 0;
                 document.getElementById('completed').textContent = stats.reports.completed || 0;
@@ -916,69 +887,9 @@
             }
         }
         
-        // View report details
-        async function viewReport(reportId) {
-            try {
-                const response = await fetch(`${WORKER_URL}/api/reports/${reportId}`);
-                const result = await response.json();
-                
-                if (result.success) {
-                    const report = result.data;
-                    
-                    // Populate form with report data
-                    document.getElementById('serverName').value = report.server_name;
-                    document.getElementById('ipAddress').value = report.ip_address || '';
-                    document.getElementById('description').value = report.description || '';
-                    document.getElementById('status').value = report.status;
-                    document.getElementById('priority').value = report.priority;
-                    document.getElementById('platform').value = report.platform || '';
-                    
-                    // Show images preview
-                    uploadedImages = [];
-                    const previewGrid = document.getElementById('previewGrid');
-                    previewGrid.innerHTML = '';
-                    
-                    if (report.images && report.images.length > 0) {
-                        for (const img of report.images) {
-                            // Fetch image data
-                            const imgResponse = await fetch(`${WORKER_URL}/api/images/${img.id}`);
-                            
-                            if (imgResponse.ok) {
-                                const blob = await imgResponse.blob();
-                                const reader = new FileReader();
-                                
-                                reader.onload = function(e) {
-                                    const imageData = {
-                                        id: img.id,
-                                        name: img.filename,
-                                        size: img.file_size,
-                                        type: img.mime_type,
-                                        dataURL: e.target.result
-                                    };
-                                    
-                                    uploadedImages.push(imageData);
-                                    createImagePreview(imageData);
-                                };
-                                
-                                reader.readAsDataURL(blob);
-                            }
-                        }
-                    }
-                    
-                    showToast(`Loaded report: ${report.server_name}`, 'info');
-                    
-                    // Scroll to form
-                    document.querySelector('.grid').scrollIntoView({ behavior: 'smooth' });
-                }
-            } catch (error) {
-                console.error('Error viewing report:', error);
-                showToast('Failed to load report details', 'error');
-            }
-        }
-        
         // Delete report
         async function deleteReport(reportId) {
-            if (!confirm('Are you sure you want to delete this report? This action cannot be undone.')) {
+            if (!confirm('Are you sure you want to delete this report?')) {
                 return;
             }
             
@@ -1011,18 +922,38 @@
             document.getElementById('platform').value = '';
             
             uploadedImages = [];
-            document.getElementById('previewGrid').innerHTML = '';
+            document.getElementById('previewContainer').innerHTML = '';
+        }
+        
+        // Check worker health
+        async function checkWorkerHealth() {
+            try {
+                const response = await fetch(`${WORKER_URL}/api/health`);
+                const data = await response.json();
+                
+                document.getElementById('workerHealth').textContent = '✅ Healthy';
+                document.getElementById('workerStatus').textContent = '✅ Connected';
+                document.getElementById('workerStatus').style.color = '#27ae60';
+                
+                console.log('Worker health check:', data);
+            } catch (error) {
+                document.getElementById('workerHealth').textContent = '❌ Error';
+                document.getElementById('workerStatus').textContent = '❌ Disconnected';
+                document.getElementById('workerStatus').style.color = '#e74c3c';
+                
+                console.error('Worker health check failed:', error);
+            }
         }
         
         // Show toast notification
         function showToast(message, type = 'info') {
-            const toastContainer = document.getElementById('toastContainer');
+            const container = document.getElementById('toastContainer');
             
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
             toast.textContent = message;
             
-            toastContainer.appendChild(toast);
+            container.appendChild(toast);
             
             // Show toast
             setTimeout(() => toast.classList.add('show'), 10);
@@ -1035,7 +966,6 @@
         }
         
         // Expose functions to global scope
-        window.viewReport = viewReport;
         window.deleteReport = deleteReport;
     </script>
 </body>
