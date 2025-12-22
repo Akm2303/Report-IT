@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Report System - API Documentation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+        }
+        .endpoint {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+        .method {
+            display: inline-block;
+            padding: 5px 15px;
+            background: #3498db;
+            color: white;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .method.get { background: #28a745; }
+        .method.post { background: #007bff; }
+        .method.delete { background: #dc3545; }
+        pre {
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 IT Report System API Documentation</h1>
+        <p>Version 1.0.0 | Powered by Cloudflare D1</p>
+    </div>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <strong>/api/health</strong>
+        <p>Health check endpoint</p>
+        <pre>curl https://your-worker.workers.dev/api/health</pre>
+        <p><strong>Response:</strong></p>
+        <pre>{
+  "success": true,
+  "healthy": true,
+  "database": "connected",
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}</pre>
+    </div>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <strong>/api/reports</strong>
+        <p>Get all reports with pagination and filtering</p>
+        <pre>curl "https://your-worker.workers.dev/api/reports?limit=10&offset=0&status=on-progress"</pre>
+        <p><strong>Query Parameters:</strong></p>
+        <ul>
+            <li><code>limit</code>: Items per page (default: 50)</li>
+            <li><code>offset</code>: Pagination offset (default: 0)</li>
+            <li><code>status</code>: Filter by status (on-progress, completed, pending, cancelled)</li>
+            <li><code>priority</code>: Filter by priority (critical, high, medium, low)</li>
+        </ul>
+    </div>
+
+    <div class="endpoint">
+        <span class="method post">POST</span>
+        <strong>/api/reports</strong>
+        <p>Create new report</p>
+        <pre>curl -X POST https://your-worker.workers.dev/api/reports \
+  -H "Content-Type: application/json" \
+  -d '{
+    "server_name": "WEB-SVR-01",
+    "ip_address": "192.168.1.100",
+    "description": "Server overload",
+    "status": "on-progress",
+    "priority": "high",
+    "platform": "Zabbix"
+  }'</pre>
+    </div>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <strong>/api/stats</strong>
+        <p>Get system statistics</p>
+        <pre>curl https://your-worker.workers.dev/api/stats</pre>
+    </div>
+
+    <div class="endpoint">
+        <span class="method get">GET</span>
+        <strong>/api/analytics?days=30</strong>
+        <p>Get advanced analytics</p>
+        <pre>curl https://your-worker.workers.dev/api/analytics?days=30</pre>
+    </div>
+</body>
+</html>

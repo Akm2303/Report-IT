@@ -1,0 +1,22 @@
+{
+  "name": "it-report-system",
+  "version": "1.0.0",
+  "description": "IT Report System with Cloudflare D1",
+  "main": "src/worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "npm run check-types",
+    "check-types": "tsc --noEmit",
+    "create-db": "wrangler d1 create it-reports-db",
+    "init-db": "wrangler d1 execute it-reports-db --file=./schema.sql",
+    "test-api": "curl https://it-report-d1-system.akmal-yusri94.workers.dev/api/health"
+  },
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20231121.0",
+    "typescript": "^5.3.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
