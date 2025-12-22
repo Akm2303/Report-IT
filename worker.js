@@ -1,114 +1,348 @@
-// worker.js - Cloudflare Worker dengan D1 Database - FIXED
+// worker.js
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    
     // CORS headers untuk semua response
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+      'Access-Control-Max-Age': '86400',
     };
 
     // Handle preflight requests
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { 
+        headers: corsHeaders,
+        status: 204 
+      });
     }
 
-    const url = new URL(request.url);
-    const path = url.pathname;
+    // API Key validation (opsional untuk production)
+    const apiKey = request.headers.get('X-API-Key');
+    const isPublicEndpoint = path.startsWith('/api/health') || path === '/' || path.includes('.html');
+    
+    if (!isPublicEndpoint && env.API_KEY && apiKey !== env.API_KEY) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Valid API key required'
+      }), {
+        status: 401,
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders 
+        }
+      });
+    }
 
+    // Log API request
+    const startTime = Date.now();
+    
     try {
-      // Routing
-      if (path === '/api/reports' && request.method === 'GET') {
-        return await handleGetReports(env.DB);
+      let response;
+      
+      // Route API requests
+      if (path === '/api/health' && request.method === 'GET') {
+        response = await handleHealthCheck(env.DB);
+      } else if (path === '/api/reports' && request.method === 'GET') {
+        response = await handleGetReports(request, env.DB);
       } else if (path === '/api/reports' && request.method === 'POST') {
-        return await handleCreateReport(request, env.DB);
+        response = await handleCreateReport(request, env.DB);
       } else if (path.startsWith('/api/reports/') && request.method === 'GET') {
         const id = path.split('/').pop();
-        return await handleGetReport(id, env.DB);
+        response = await handleGetReport(id, env.DB);
       } else if (path.startsWith('/api/reports/') && request.method === 'DELETE') {
         const id = path.split('/').pop();
-        return await handleDeleteReport(id, env.DB);
-      } else if (path === '/api/images' && request.method === 'POST') {
-        return await handleUploadImage(request, env.DB);
+        response = await handleDeleteReport(id, env.DB);
+      } else if (path === '/api/reports/search' && request.method === 'GET') {
+        response = await handleSearchReports(request, env.DB);
+      } else if (path === '/api/stats' && request.method === 'GET') {
+        response = await handleGetStats(env.DB);
+      } else if (path === '/api/analytics' && request.method === 'GET') {
+        response = await handleGetAnalytics(request, env.DB);
+      } else if (path === '/api/upload' && request.method === 'POST') {
+        response = await handleUploadImage(request, env.DB, env.R2_BUCKET);
       } else if (path.startsWith('/api/images/')) {
         const id = path.split('/').pop();
-        return await handleGetImage(id, env.DB);
-      } else if (path === '/api/stats') {
-        return await handleGetStats(env.DB);
-      } else if (path === '/api/health') {
-        return new Response(JSON.stringify({ 
-          status: 'ok',
-          database: env.DB ? 'connected' : 'not connected'
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        response = await handleGetImage(id, env.DB, env.R2_BUCKET);
+      } else if (path === '/' || path === '/index.html') {
+        response = await serveFrontend();
       } else {
-        // Serve frontend HTML
-        return await serveFrontend();
+        response = new Response('Not Found', { 
+          status: 404,
+          headers: { 'Content-Type': 'text/plain', ...corsHeaders }
+        });
       }
+
+      // Add CORS headers to response
+      const newHeaders = new Headers(response.headers);
+      Object.entries(corsHeaders).forEach(([key, value]) => {
+        newHeaders.set(key, value);
+      });
+
+      // Calculate response time
+      const responseTime = Date.now() - startTime;
+      
+      // Log successful request (async - don't wait)
+      ctx.waitUntil(logRequest(
+        env.DB, 
+        path, 
+        request.method, 
+        response.status, 
+        responseTime,
+        request.headers.get('user-agent')
+      ));
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: newHeaders
+      });
+
     } catch (error) {
-      console.error('Error in worker:', error);
-      return new Response(JSON.stringify({ 
-        error: error.message,
+      console.error('API Error:', error);
+      
+      // Log error (async)
+      ctx.waitUntil(logRequest(
+        env.DB, 
+        path, 
+        request.method, 
+        500, 
+        Date.now() - startTime,
+        request.headers.get('user-agent')
+      ));
+
+      return new Response(JSON.stringify({
         success: false,
+        error: 'Internal Server Error',
+        message: error.message,
         timestamp: new Date().toISOString()
       }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders 
+        }
       });
     }
   },
 };
 
-// 1. GET all reports
-async function handleGetReports(db) {
+// ============ API HANDLERS ============
+
+// 1. Health Check Endpoint
+async function handleHealthCheck(db) {
   try {
-    const { results } = await db.prepare(`
+    // Test database connection
+    const dbTest = await db.prepare('SELECT 1 as test').first();
+    
+    // Get system info
+    const stats = await db.prepare(`
       SELECT 
-        r.*,
-        (SELECT COUNT(*) FROM images WHERE report_id = r.id) as image_count
-      FROM reports r
-      ORDER BY r.created_at DESC
-      LIMIT 100
-    `).all();
+        COUNT(*) as total_reports,
+        COUNT(CASE WHEN status IN ('on-progress', 'pending') THEN 1 END) as active_issues,
+        (SELECT COUNT(*) FROM images) as total_images
+      FROM reports
+    `).first();
 
     return new Response(JSON.stringify({
       success: true,
-      data: results,
-      total: results.length,
+      healthy: true,
+      status: 'operational',
+      database: dbTest ? 'connected' : 'disconnected',
+      timestamp: new Date().toISOString(),
+      system: {
+        reports: stats?.total_reports || 0,
+        active_issues: stats?.active_issues || 0,
+        images: stats?.total_images || 0
+      },
+      version: '1.0.0',
+      environment: 'production'
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({
+      success: false,
+      healthy: false,
+      error: error.message,
       timestamp: new Date().toISOString()
     }), {
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }
+      status: 503,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// 2. GET All Reports with filtering
+async function handleGetReports(request, db) {
+  try {
+    const url = new URL(request.url);
+    const params = url.searchParams;
+    
+    const limit = parseInt(params.get('limit')) || 50;
+    const offset = parseInt(params.get('offset')) || 0;
+    const status = params.get('status');
+    const priority = params.get('priority');
+    
+    let query = `
+      SELECT 
+        r.*,
+        COALESCE((SELECT COUNT(*) FROM images WHERE report_id = r.id), 0) as image_count,
+        COALESCE((SELECT filename FROM images WHERE report_id = r.id ORDER BY created_at LIMIT 1), '') as preview_image
+      FROM reports r
+      WHERE 1=1
+    `;
+    
+    const queryParams = [];
+    
+    if (status) {
+      query += ` AND r.status = ?`;
+      queryParams.push(status);
+    }
+    
+    if (priority) {
+      query += ` AND r.priority = ?`;
+      queryParams.push(priority);
+    }
+    
+    query += ` ORDER BY r.timestamp DESC LIMIT ? OFFSET ?`;
+    queryParams.push(limit, offset);
+    
+    const reports = await db.prepare(query).bind(...queryParams).all();
+    
+    // Get total count for pagination
+    let countQuery = `SELECT COUNT(*) as total FROM reports WHERE 1=1`;
+    const countParams = [];
+    
+    if (status) {
+      countQuery += ` AND status = ?`;
+      countParams.push(status);
+    }
+    
+    if (priority) {
+      countQuery += ` AND priority = ?`;
+      countParams.push(priority);
+    }
+    
+    const total = await db.prepare(countQuery).bind(...countParams).first();
+    
+    return new Response(JSON.stringify({
+      success: true,
+      data: reports.results || [],
+      meta: {
+        total: total?.total || 0,
+        limit,
+        offset,
+        has_more: (offset + limit) < (total?.total || 0)
+      },
+      filters: {
+        status,
+        priority
+      },
+      timestamp: new Date().toISOString()
+    }), {
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
     throw new Error(`Failed to get reports: ${error.message}`);
   }
 }
 
-// 2. GET single report
+// 3. CREATE New Report
+async function handleCreateReport(request, db) {
+  try {
+    const data = await request.json();
+    
+    // Validation
+    const requiredFields = ['server_name', 'status', 'priority'];
+    const missingFields = requiredFields.filter(field => !data[field]);
+    
+    if (missingFields.length > 0) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Missing required fields',
+        missing: missingFields,
+        message: `Required: ${missingFields.join(', ')}`
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    // Generate IDs
+    const id = `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const reportId = `REP-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+    const timestamp = new Date().toISOString();
+    
+    // Insert report
+    const result = await db.prepare(`
+      INSERT INTO reports (
+        id, report_id, server_name, ip_address, description, 
+        status, priority, platform, created_by, timestamp, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      reportId,
+      data.server_name,
+      data.ip_address || '',
+      data.description || '',
+      data.status,
+      data.priority,
+      data.platform || '',
+      data.created_by || 'System',
+      data.timestamp || timestamp,
+      timestamp
+    ).run();
+    
+    if (result.success) {
+      // Get the created report
+      const createdReport = await db.prepare(`
+        SELECT * FROM reports WHERE id = ?
+      `).bind(id).first();
+      
+      // Update system stats
+      await updateSystemStats(db);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Report created successfully',
+        data: createdReport,
+        report_id: reportId,
+        id: id,
+        timestamp: timestamp
+      }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } else {
+      throw new Error('Database insertion failed');
+    }
+  } catch (error) {
+    throw new Error(`Failed to create report: ${error.message}`);
+  }
+}
+
+// 4. GET Single Report
 async function handleGetReport(id, db) {
   try {
     // Get report details
     const report = await db.prepare(`
       SELECT * FROM reports WHERE id = ?
     `).bind(id).first();
-
+    
     if (!report) {
       return new Response(JSON.stringify({
-        error: 'Report not found',
-        success: false
+        success: false,
+        error: 'Report not found'
       }), {
         status: 404,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
     }
-
+    
     // Get associated images
     const images = await db.prepare(`
       SELECT id, filename, file_size, mime_type, created_at 
@@ -116,7 +350,7 @@ async function handleGetReport(id, db) {
       WHERE report_id = ?
       ORDER BY created_at
     `).bind(id).all();
-
+    
     return new Response(JSON.stringify({
       success: true,
       data: {
@@ -124,456 +358,627 @@ async function handleGetReport(id, db) {
         images: images.results || []
       }
     }), {
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
     throw new Error(`Failed to get report: ${error.message}`);
   }
 }
 
-// 3. CREATE new report
-async function handleCreateReport(request, db) {
-  try {
-    const data = await request.json();
-    
-    // Validasi
-    if (!data.server_name || !data.status || !data.priority) {
-      return new Response(JSON.stringify({
-        error: 'Missing required fields: server_name, status, priority',
-        success: false
-      }), {
-        status: 400,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
-    }
-
-    // Generate ID
-    const id = `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const timestamp = new Date().toISOString();
-
-    // Insert report
-    const result = await db.prepare(`
-      INSERT INTO reports (id, server_name, ip_address, description, status, priority, platform, timestamp, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      id,
-      data.server_name,
-      data.ip_address || '',
-      data.description || '',
-      data.status,
-      data.priority,
-      data.platform || '',
-      data.timestamp || timestamp,
-      timestamp
-    ).run();
-
-    if (result.success) {
-      return new Response(JSON.stringify({
-        success: true,
-        id: id,
-        message: 'Report created successfully',
-        timestamp: timestamp
-      }), {
-        status: 201,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
-    } else {
-      throw new Error('Failed to insert report');
-    }
-  } catch (error) {
-    throw new Error(`Failed to create report: ${error.message}`);
-  }
-}
-
-// 4. DELETE report
+// 5. DELETE Report
 async function handleDeleteReport(id, db) {
   try {
-    // Hapus report (images akan terhapus otomatis karena cascade)
+    // First, delete associated images
+    await db.prepare(`
+      DELETE FROM images WHERE report_id = ?
+    `).bind(id).run();
+    
+    // Then delete the report
     const result = await db.prepare(`
       DELETE FROM reports WHERE id = ?
     `).bind(id).run();
-
+    
     if (result.meta.changes === 0) {
       return new Response(JSON.stringify({
-        error: 'Report not found',
-        success: false
+        success: false,
+        error: 'Report not found'
       }), {
         status: 404,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
     }
-
+    
+    // Update system stats
+    await updateSystemStats(db);
+    
     return new Response(JSON.stringify({
       success: true,
       message: 'Report deleted successfully',
       deleted: result.meta.changes
     }), {
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
     throw new Error(`Failed to delete report: ${error.message}`);
   }
 }
 
-// 5. UPLOAD image (simplified - simpan metadata saja)
-async function handleUploadImage(request, db) {
+// 6. SEARCH Reports
+async function handleSearchReports(request, db) {
   try {
-    const data = await request.json();
+    const url = new URL(request.url);
+    const query = url.searchParams.get('q');
     
-    if (!data.report_id || !data.filename || !data.image_data) {
+    if (!query || query.trim().length < 2) {
       return new Response(JSON.stringify({
-        error: 'Missing required fields: report_id, filename, image_data',
-        success: false
+        success: false,
+        error: 'Search query must be at least 2 characters'
       }), {
         status: 400,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
     }
-
-    // Cek apakah report exists
-    const report = await db.prepare(`
-      SELECT id FROM reports WHERE id = ?
-    `).bind(data.report_id).first();
-
-    if (!report) {
-      return new Response(JSON.stringify({
-        error: 'Report not found',
-        success: false
-      }), {
-        status: 404,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
-    }
-
-    // Generate image ID
-    const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Simpan metadata saja (simplified untuk D1)
-    // Di production, sebaiknya simpan di R2 dan hanya simpan URL di D1
-    const result = await db.prepare(`
-      INSERT INTO images (id, report_id, filename, file_size, mime_type, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(
-      imageId,
-      data.report_id,
-      data.filename,
-      data.file_size || 0,
-      data.mime_type || 'image/png',
-      new Date().toISOString()
-    ).run();
-
-    if (result.success) {
-      return new Response(JSON.stringify({
-        success: true,
-        id: imageId,
-        filename: data.filename,
-        message: 'Image metadata saved successfully'
-      }), {
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
-    } else {
-      throw new Error('Failed to save image metadata');
-    }
-  } catch (error) {
-    throw new Error(`Failed to upload image: ${error.message}`);
-  }
-}
-
-// 6. GET image metadata (simplified)
-async function handleGetImage(id, db) {
-  try {
-    const image = await db.prepare(`
-      SELECT id, filename, file_size, mime_type, created_at 
-      FROM images WHERE id = ?
-    `).bind(id).first();
-
-    if (!image) {
-      return new Response(JSON.stringify({
-        error: 'Image not found',
-        success: false
-      }), {
-        status: 404,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
-    }
-
+    const searchTerm = `%${query}%`;
+    
+    const results = await db.prepare(`
+      SELECT 
+        id, report_id, server_name, ip_address, 
+        description, status, priority, timestamp
+      FROM reports 
+      WHERE 
+        server_name LIKE ? OR
+        ip_address LIKE ? OR
+        description LIKE ? OR
+        report_id LIKE ?
+      ORDER BY timestamp DESC
+      LIMIT 20
+    `).bind(searchTerm, searchTerm, searchTerm, searchTerm).all();
+    
     return new Response(JSON.stringify({
       success: true,
-      data: image
+      query: query,
+      results: results.results || [],
+      count: results.results?.length || 0,
+      timestamp: new Date().toISOString()
     }), {
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    throw new Error(`Failed to get image: ${error.message}`);
+    throw new Error(`Search failed: ${error.message}`);
   }
 }
 
-// 7. GET stats
+// 7. GET System Statistics
 async function handleGetStats(db) {
   try {
-    // Get report statistics
+    // Get comprehensive statistics
     const stats = await db.prepare(`
       SELECT 
         COUNT(*) as total_reports,
-        SUM(CASE WHEN status IN ('on-progress', 'pending') THEN 1 ELSE 0 END) as active_issues,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-        SUM(CASE WHEN priority = 'critical' THEN 1 ELSE 0 END) as critical_count,
-        SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END) as high_count
+        COUNT(CASE WHEN status = 'on-progress' THEN 1 END) as on_progress,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
+        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
+        COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
+        COUNT(CASE WHEN priority = 'critical' THEN 1 END) as critical,
+        COUNT(CASE WHEN priority = 'high' THEN 1 END) as high,
+        COUNT(CASE WHEN priority = 'medium' THEN 1 END) as medium,
+        COUNT(CASE WHEN priority = 'low' THEN 1 END) as low,
+        (SELECT COUNT(*) FROM images) as total_images,
+        (SELECT COUNT(DISTINCT DATE(created_at)) FROM reports) as active_days
       FROM reports
     `).first();
-
-    // Get image statistics
-    const imageStats = await db.prepare(`
+    
+    // Get recent activity
+    const recent = await db.prepare(`
       SELECT 
-        COUNT(*) as total_images,
-        COALESCE(SUM(file_size), 0) as total_size_bytes
-      FROM images
+        COUNT(*) as reports_today,
+        COUNT(DISTINCT server_name) as unique_servers_today
+      FROM reports 
+      WHERE DATE(created_at) = DATE('now')
     `).first();
-
+    
+    // Get platform distribution
+    const platforms = await db.prepare(`
+      SELECT 
+        platform,
+        COUNT(*) as count
+      FROM reports 
+      WHERE platform IS NOT NULL AND platform != ''
+      GROUP BY platform
+      ORDER BY count DESC
+    `).all();
+    
+    // Get status timeline (last 7 days)
+    const timeline = await db.prepare(`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as total,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
+      FROM reports 
+      WHERE created_at >= DATE('now', '-7 days')
+      GROUP BY DATE(created_at)
+      ORDER BY date
+    `).all();
+    
     return new Response(JSON.stringify({
       success: true,
       data: {
-        reports: stats || {
-          total_reports: 0,
-          active_issues: 0,
-          completed: 0,
-          critical_count: 0,
-          high_count: 0
-        },
-        images: imageStats || {
-          total_images: 0,
-          total_size_bytes: 0
-        },
+        overview: stats || {},
+        activity: recent || {},
+        platforms: platforms.results || [],
+        timeline: timeline.results || [],
         timestamp: new Date().toISOString()
       }
     }), {
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
     throw new Error(`Failed to get stats: ${error.message}`);
   }
 }
 
-// 8. Serve frontend HTML
+// 8. GET Advanced Analytics
+async function handleGetAnalytics(request, db) {
+  try {
+    const url = new URL(request.url);
+    const days = parseInt(url.searchParams.get('days')) || 30;
+    
+    // Response time trends
+    const responseTimes = await db.prepare(`
+      SELECT 
+        DATE(created_at) as date,
+        AVG(CASE 
+          WHEN status = 'completed' 
+          THEN (julianday(updated_at) - julianday(created_at)) * 24 * 60 
+          ELSE NULL 
+        END) as avg_response_minutes
+      FROM reports 
+      WHERE created_at >= DATE('now', ?)
+      GROUP BY DATE(created_at)
+      ORDER BY date
+    `).bind(`-${days} days`).all();
+    
+    // Priority distribution over time
+    const priorityTrends = await db.prepare(`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(CASE WHEN priority = 'critical' THEN 1 END) as critical,
+        COUNT(CASE WHEN priority = 'high' THEN 1 END) as high,
+        COUNT(CASE WHEN priority = 'medium' THEN 1 END) as medium,
+        COUNT(CASE WHEN priority = 'low' THEN 1 END) as low
+      FROM reports 
+      WHERE created_at >= DATE('now', ?)
+      GROUP BY DATE(created_at)
+      ORDER BY date
+    `).bind(`-${days} days`).all();
+    
+    // Server with most incidents
+    const topServers = await db.prepare(`
+      SELECT 
+        server_name,
+        COUNT(*) as incident_count,
+        COUNT(CASE WHEN priority = 'critical' THEN 1 END) as critical_count
+      FROM reports 
+      GROUP BY server_name
+      ORDER BY incident_count DESC
+      LIMIT 10
+    `).all();
+    
+    // Hourly distribution
+    const hourlyDistribution = await db.prepare(`
+      SELECT 
+        strftime('%H', created_at) as hour,
+        COUNT(*) as count
+      FROM reports
+      WHERE created_at >= DATE('now', ?)
+      GROUP BY strftime('%H', created_at)
+      ORDER BY hour
+    `).bind(`-${days} days`).all();
+    
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        response_times: responseTimes.results || [],
+        priority_trends: priorityTrends.results || [],
+        top_servers: topServers.results || [],
+        hourly_distribution: hourlyDistribution.results || [],
+        period_days: days,
+        timestamp: new Date().toISOString()
+      }
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    throw new Error(`Failed to get analytics: ${error.message}`);
+  }
+}
+
+// 9. UPLOAD Image (using R2 for production, fallback to base64)
+async function handleUploadImage(request, db, r2Bucket) {
+  try {
+    const contentType = request.headers.get('content-type');
+    
+    if (contentType.includes('application/json')) {
+      // Base64 upload (for small images or testing)
+      const data = await request.json();
+      
+      if (!data.report_id || !data.image_data || !data.filename) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Missing required fields: report_id, image_data, filename'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Validate report exists
+      const report = await db.prepare(`
+        SELECT id FROM reports WHERE id = ?
+      `).bind(data.report_id).first();
+      
+      if (!report) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Report not found'
+        }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Save to database (base64)
+      const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      await db.prepare(`
+        INSERT INTO images (id, report_id, filename, file_size, mime_type, image_data, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        imageId,
+        data.report_id,
+        data.filename,
+        data.file_size || 0,
+        data.mime_type || 'image/png',
+        data.image_data, // base64 string
+        new Date().toISOString()
+      ).run();
+      
+      return new Response(JSON.stringify({
+        success: true,
+        id: imageId,
+        filename: data.filename,
+        message: 'Image uploaded successfully (base64)'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+    } else if (contentType.includes('multipart/form-data')) {
+      // R2 upload for production
+      if (!r2Bucket) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'R2 bucket not configured'
+        }), {
+          status: 501,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      const formData = await request.formData();
+      const reportId = formData.get('report_id');
+      const file = formData.get('file');
+      
+      if (!reportId || !file) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Missing required fields: report_id, file'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Generate unique filename
+      const filename = `${reportId}_${Date.now()}_${file.name}`;
+      
+      // Upload to R2
+      await r2Bucket.put(filename, file);
+      
+      // Get R2 URL
+      const r2Url = `https://pub-${env.R2_ACCOUNT_ID}.r2.dev/${filename}`;
+      
+      // Save metadata to database
+      const imageId = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      await db.prepare(`
+        INSERT INTO images (id, report_id, filename, file_size, mime_type, image_data, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        imageId,
+        reportId,
+        file.name,
+        file.size,
+        file.type,
+        r2Url, // Store R2 URL instead of base64
+        new Date().toISOString()
+      ).run();
+      
+      return new Response(JSON.stringify({
+        success: true,
+        id: imageId,
+        filename: file.name,
+        url: r2Url,
+        message: 'Image uploaded to R2 successfully'
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } else {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Unsupported content type. Use application/json or multipart/form-data'
+      }), {
+        status: 415,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  } catch (error) {
+    throw new Error(`Upload failed: ${error.message}`);
+  }
+}
+
+// 10. GET Image
+async function handleGetImage(id, db, r2Bucket) {
+  try {
+    const image = await db.prepare(`
+      SELECT * FROM images WHERE id = ?
+    `).bind(id).first();
+    
+    if (!image) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Image not found'
+      }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (image.image_data.startsWith('http')) {
+      // Redirect to R2 URL
+      return Response.redirect(image.image_data, 302);
+    } else {
+      // Return base64 image
+      const base64Data = image.image_data.split(',')[1] || image.image_data;
+      const buffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      
+      return new Response(buffer, {
+        headers: {
+          'Content-Type': image.mime_type || 'image/png',
+          'Content-Disposition': `inline; filename="${image.filename}"`,
+          'Cache-Control': 'public, max-age=86400'
+        }
+      });
+    }
+  } catch (error) {
+    throw new Error(`Failed to get image: ${error.message}`);
+  }
+}
+
+// ============ HELPER FUNCTIONS ============
+
+// Update system statistics
+async function updateSystemStats(db) {
+  try {
+    const stats = await db.prepare(`
+      SELECT 
+        COUNT(*) as total_reports,
+        COUNT(CASE WHEN status IN ('on-progress', 'pending') THEN 1 END) as active_issues,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_reports,
+        COUNT(CASE WHEN priority = 'critical' THEN 1 END) as critical_issues
+      FROM reports
+    `).first();
+    
+    await db.prepare(`
+      INSERT OR REPLACE INTO system_stats 
+      (id, total_reports, active_issues, completed_reports, critical_issues, last_updated)
+      VALUES (1, ?, ?, ?, ?, ?)
+    `).bind(
+      stats?.total_reports || 0,
+      stats?.active_issues || 0,
+      stats?.completed_reports || 0,
+      stats?.critical_issues || 0,
+      new Date().toISOString()
+    ).run();
+  } catch (error) {
+    console.error('Failed to update system stats:', error);
+  }
+}
+
+// Log API request
+async function logRequest(db, endpoint, method, statusCode, responseTime, userAgent) {
+  try {
+    await db.prepare(`
+      INSERT INTO api_logs (endpoint, method, status_code, response_time, user_agent, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      endpoint,
+      method,
+      statusCode,
+      responseTime,
+      userAgent || '',
+      new Date().toISOString()
+    ).run();
+  } catch (error) {
+    console.error('Failed to log request:', error);
+  }
+}
+
+// Serve frontend HTML
 async function serveFrontend() {
-  const html = `
-    <!DOCTYPE html>
-    <html lang="id">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>IT Report System - Cloudflare D1</title>
-        <style>
-            body { 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                padding: 20px; 
-                max-width: 1200px; 
-                margin: 0 auto;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-            }
-            .container {
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                margin-top: 20px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.1);
-            }
-            .header { 
-                text-align: center;
-                margin-bottom: 40px;
-            }
-            .header h1 { 
-                color: #2c3e50; 
-                margin-bottom: 10px;
-                font-size: 2.5rem;
-            }
-            .badge {
-                display: inline-block;
-                padding: 8px 16px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                border-radius: 20px;
-                font-size: 0.9rem;
-                font-weight: 600;
-                margin-top: 10px;
-            }
-            .api-endpoint {
-                background: #f8f9fa;
-                border-left: 4px solid #3498db;
-                padding: 15px;
-                margin: 15px 0;
-                border-radius: 5px;
-            }
-            .api-endpoint code {
-                background: #2c3e50;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 4px;
-                font-family: monospace;
-            }
-            .status {
-                padding: 20px;
-                background: #e8f4fd;
-                border-radius: 10px;
-                margin: 20px 0;
-            }
-            .status.good { background: #d4edda; }
-            .status.error { background: #f8d7da; }
-        </style>
-        <script>
-            async function checkHealth() {
-                try {
-                    const response = await fetch('/api/health');
-                    const data = await response.json();
-                    const statusDiv = document.getElementById('healthStatus');
-                    statusDiv.className = 'status ' + (data.status === 'ok' ? 'good' : 'error');
-                    statusDiv.innerHTML = \`
-                        <h3>Health Check: \${data.status === 'ok' ? '✅ Healthy' : '❌ Error'}</h3>
-                        <p>Database: \${data.database}</p>
-                        <p>Timestamp: \${new Date().toLocaleString()}</p>
-                    \`;
-                } catch (error) {
-                    document.getElementById('healthStatus').innerHTML = \`
-                        <h3>Health Check: ❌ Error</h3>
-                        <p>Error: \${error.message}</p>
-                    \`;
-                }
-            }
-            
-            async function testAPI() {
-                try {
-                    const response = await fetch('/api/stats');
-                    const data = await response.json();
-                    document.getElementById('testResult').innerHTML = \`
-                        <h4>✅ API Test Successful</h4>
-                        <pre>\${JSON.stringify(data, null, 2)}</pre>
-                    \`;
-                } catch (error) {
-                    document.getElementById('testResult').innerHTML = \`
-                        <h4>❌ API Test Failed</h4>
-                        <p>Error: \${error.message}</p>
-                    \`;
-                }
-            }
-            
-            window.onload = function() {
-                checkHealth();
-                testAPI();
-            };
-        </script>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>🚀 IT Report System API</h1>
-                <p>Powered by Cloudflare D1 Database (SQLite) - 100% Gratis</p>
-                <div class="badge">Status: Online • D1 Database Connected</div>
-            </div>
-            
-            <div id="healthStatus" class="status">
-                Checking health status...
-            </div>
-            
-            <div style="margin: 30px 0;">
-                <h2>📊 API Endpoints</h2>
-                
-                <div class="api-endpoint">
-                    <h3>GET <code>/api/reports</code></h3>
-                    <p>Get all reports (latest 100)</p>
-                    <button onclick="fetch('/api/reports').then(r => r.json()).then(d => alert(JSON.stringify(d, null, 2)))">Test</button>
-                </div>
-                
-                <div class="api-endpoint">
-                    <h3>POST <code>/api/reports</code></h3>
-                    <p>Create new report</p>
-                    <pre style="background: #f1f1f1; padding: 10px; border-radius: 5px;">
-{
-  "server_name": "PROD-WEB-01",
-  "ip_address": "192.168.1.100",
-  "status": "on-progress",
-  "priority": "high"
-}</pre>
-                </div>
-                
-                <div class="api-endpoint">
-                    <h3>GET <code>/api/stats</code></h3>
-                    <p>Get system statistics</p>
-                    <div id="testResult"></div>
-                </div>
-                
-                <div class="api-endpoint">
-                    <h3>GET <code>/api/health</code></h3>
-                    <p>Health check endpoint</p>
-                </div>
-            </div>
-            
-            <div style="margin-top: 40px; padding: 20px; background: #f8f9fa; border-radius: 10px;">
-                <h3>🛠️ Getting Started</h3>
-                <ol>
-                    <li>Use the API endpoints with your frontend application</li>
-                    <li>All data is stored in Cloudflare D1 SQLite database</li>
-                    <li>100% Free Tier - no credit card required</li>
-                    <li>Global CDN with automatic HTTPS</li>
-                </ol>
-                
-                <p style="margin-top: 20px;">
-                    <strong>Frontend URL:</strong> 
-                    <a href="/index.html" id="frontendLink">/index.html</a>
-                </p>
-            </div>
-            
-            <div style="margin-top: 30px; text-align: center; color: #666; font-size: 0.9rem;">
-                <p>Powered by Cloudflare Workers + D1 Database</p>
-                <p>Deployed: ${new Date().toLocaleDateString()}</p>
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Report System API</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        .health-check {
+            padding: 20px;
+            background: #e8f4fd;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .health-dot {
+            width: 12px;
+            height: 12px;
+            background: #27ae60;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .endpoint {
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+        .method {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #3498db;
+            color: white;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .method.get { background: #28a745; }
+        .method.post { background: #007bff; }
+        .method.delete { background: #dc3545; }
+        code {
+            background: #2c3e50;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        pre {
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border-left: 4px solid #3498db;
+        }
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 10px 0;
+        }
+        .action-buttons {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 12px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        @media (max-width: 768px) {
+            .container { padding: 20px; }
+            .header h1 { font-size: 2rem; }
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 IT Report System API</h1>
+            <p>Powered by Cloudflare D1 Database (SQLite) • 100% Free Tier</p>
+            <div class="badge">🟢 Online • D1 Database Connected</div>
+        </div>
+        
+        <div id="healthStatus" class="health-check">
+            <div class="health-dot"></div>
+            <div>
+                <h3>API Status: Checking...</h3>
+                <p>Timestamp: Loading...</p>
             </div>
         </div>
         
-        <script>
-            // Set frontend link dynamically
-            document.getElementById('frontendLink').href = window.location.origin + '/index.html';
-        </script>
-    </body>
-    </html>
-  `;
-
-  return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
-}
+        <div class="stats-grid" id="statsGrid">
+            <!-- Stats will be loaded here -->
+        </div>
+        
+        <h2>📚 API Documentation

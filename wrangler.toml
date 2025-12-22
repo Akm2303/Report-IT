@@ -21,5 +21,5 @@ MAX_IMAGE_SIZE = "1048576"  # 1MB
 
 # Uncomment untuk production dengan custom domain
 # [env.production]
-# route = "it-reports.your-domain.com/*"
+ route = "it-report-d1-system.akmal-yusri94.workers.dev/*"
 # zone_id = "your-zone-id"
